@@ -22,16 +22,16 @@ namespace LKZ.UI
         [SerializeField]
         private GameObject _my_Go, _gpt_go;
 
-        [SerializeField, Tooltip("���")]
+        [SerializeField, Tooltip("���")]
         private float interval = 15f;
 
-        [SerializeField, Tooltip("���������Ƿ������ƶ�����")]
+        [SerializeField, Tooltip("���������Ƿ������ƶ�����")]
         private float GPTGenerateContentUpMove = 30f;
 
         private ShowContent currentShowContent;
 
         /// <summary>
-        /// �������ݺͲ��������ݹ�����ͼ��λ��
+        /// �������ݺͲ��������ݹ�����ͼ��λ��
         /// </summary>
         private Vector3 defaultPos, GPTGenerateContentPos;
          
@@ -39,9 +39,15 @@ namespace LKZ.UI
         private bool isSetScrollRectNormalizedPosition;
 
         /// <summary>
-        /// �Ƿ�������GPT����
+        /// �Ƿ�������GPT����
         /// </summary>
         private bool isGenerateGPTContent;
+
+        // 用于记录上一次添加的内容类型
+        private InfoType lastAddedContentType = InfoType.None;
+        // 用于防止短时间内重复添加相同类型的内容
+        private float lastAddContentTime = 0f;
+        private const float MIN_ADD_CONTENT_INTERVAL = 0.5f; // 最小添加间隔(秒)
 
         private RectTransform thisRect;
 
@@ -87,11 +93,30 @@ namespace LKZ.UI
 
         private void OnDestroy()
         {
-            RegisterCommand.UnRegister<AddChatContentCommand>(AddChatContentCommandCallback);
+            if (RegisterCommand != null)
+            {
+                RegisterCommand.UnRegister<AddChatContentCommand>(AddChatContentCommandCallback);
+            }
         }
 
         private void AddChatContentCommandCallback(AddChatContentCommand obj)
         {
+            // 只处理系统欢迎消息或没有特定处理者的一般消息
+            
+            // 检查是否是相同类型的重复添加
+            if (obj.infoType == lastAddedContentType && (Time.time - lastAddContentTime < MIN_ADD_CONTENT_INTERVAL) && !obj.isSystemWelcome)
+            {
+                Debug.Log($"跳过重复添加的聊天内容框: {obj.infoType}, 间隔: {Time.time - lastAddContentTime}秒");
+                obj._addTextAction(AddShowText); // 仍然提供文本添加功能
+                return;
+            }
+            
+            // 更新上次添加的类型和时间
+            lastAddedContentType = obj.infoType;
+            lastAddContentTime = Time.time;
+            
+            Debug.Log($"添加聊天内容框: {obj.infoType}" + (obj.isSystemWelcome ? " (系统欢迎消息)" : ""));
+            
             Vector2 pos = new Vector2(0, -_scrollRect_Content.sizeDelta.y);
 
             if (!object.ReferenceEquals(null, currentShowContent))
@@ -141,7 +166,7 @@ namespace LKZ.UI
                 _scrollRect.verticalNormalizedPosition = Mathf.Lerp(_scrollRect.verticalNormalizedPosition, 0, 0.05f);
 
 #if !UNITY_STANDALONE_WIN
-            //���������ƶ�
+            //���������ƶ�
             thisRect.anchoredPosition = Vector3.Lerp(this.thisRect.anchoredPosition, isGenerateGPTContent ? this.GPTGenerateContentPos : this.defaultPos, 0.05f);
 #endif
         }

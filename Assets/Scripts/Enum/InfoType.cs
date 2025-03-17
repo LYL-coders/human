@@ -1,8 +1,11 @@
-﻿namespace LKZ.Enum
+﻿using System;
+
+namespace LKZ.Enum
 {
     public enum InfoType
     {
-        My,
-        ChatGPT
+        None, // 默认无类型
+        My,   // 用户类型
+        ChatGPT  // ChatGPT类型
     }
 }

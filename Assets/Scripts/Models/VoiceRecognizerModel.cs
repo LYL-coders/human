@@ -15,6 +15,9 @@ namespace LKZ.Voice
     {
         const string url= "ws://1.94.131.28:19463/recognition";
 
+        // 添加静态标志位，用于标记是否正在处理GPT响应
+        public static bool isProcessingGPTResponse = false;
+
         [Inject]
         private MonoBehaviour _mono { get; set; }
 
@@ -28,6 +31,10 @@ namespace LKZ.Voice
         private VoiceRecognitionResultCommand voiceRecognitionResult = new VoiceRecognitionResultCommand();
 
         VoiceRecognizerBase voiceRecognizer;
+        private string lastRecognizedText = "";
+        private float lastRecognitionTime = 0f;
+        private const float MIN_RECOGNITION_INTERVAL = 1.0f;
+
         public void Initialized()
         { 
             RegisterCommand.Register<SettingVoiceRecognitionCommand>(SettingVoiceRecognitionCommandCallback);
@@ -37,7 +44,7 @@ namespace LKZ.Voice
         }
          
         /// <summary>
-        /// ��������ʶ������ص�
+        /// 设置语音识别命令回调
         /// </summary>
         /// <param name="obj"></param>
         private void SettingVoiceRecognitionCommandCallback(SettingVoiceRecognitionCommand obj)
@@ -46,28 +53,97 @@ namespace LKZ.Voice
         }
 
         /// <summary>
-        /// ����ʶ����
+        /// 设置是否正在处理GPT响应
+        /// </summary>
+        /// <param name="isProcessing">是否正在处理</param>
+        public static void SetProcessingGPTResponse(bool isProcessing)
+        {
+            try
+            {
+                // 始终输出日志，无论状态是否变化
+                Debug.Log($"设置GPT响应处理状态: {isProcessing}, 当前状态: {isProcessingGPTResponse}, 调用堆栈: {Environment.StackTrace}");
+                
+                // 更新状态
+                isProcessingGPTResponse = isProcessing;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"设置GPT响应处理状态时出错: {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// 处理识别结果
         /// </summary>
         /// <param name="count"></param>
         private void DisponseRecognition(string text1)
         {  
-            if (text1 == " N" || text1 == "N" || text1 == "A" || text1 == " A")
-                return;
-
-            if (!string.IsNullOrEmpty(text1))
+            try
             {
+                // 记录当前状态
+                Debug.Log($"处理语音识别结果: {text1}, 当前GPT响应处理状态: {isProcessingGPTResponse}");
+                
+                // 如果正在处理GPT响应，跳过语音识别处理
+                if (isProcessingGPTResponse)
+                {
+                    Debug.Log($"正在处理GPT响应，跳过语音识别: {text1}");
+                    return;
+                }
+
+                if (text1 == " N" || text1 == "N" || text1 == "A" || text1 == " A")
+                {
+                    Debug.Log($"跳过特殊标记: {text1}");
+                    return;
+                }
+
                 if (text1 == "\n")
                 {
-                    voiceRecognitionResult.IsComplete = true;
-                    voiceRecognitionResult.text = string.Empty;
-                }
-                else
-                {
-                    voiceRecognitionResult.IsComplete = false;
-                    voiceRecognitionResult.text = text1;
+                    float timeSinceLastRecognition = Time.time - lastRecognitionTime;
+                    Debug.Log($"收到换行符，距上次识别: {timeSinceLastRecognition}秒, 最小间隔: {MIN_RECOGNITION_INTERVAL}秒");
+                    
+                    if (timeSinceLastRecognition > MIN_RECOGNITION_INTERVAL)
+                    {
+                        voiceRecognitionResult.IsComplete = true;
+                        voiceRecognitionResult.text = string.Empty;
+                        lastRecognizedText = "";
+                        lastRecognitionTime = Time.time;
+                        Debug.Log("发送语音识别完成信号");
+                        SendCommand.Send(voiceRecognitionResult);
+                    }
+                    else
+                    {
+                        Debug.Log($"忽略过快的结束信号，间隔: {timeSinceLastRecognition}秒");
+                    }
+                    return;
                 }
 
-                SendCommand.Send(voiceRecognitionResult);
+                if (!string.IsNullOrEmpty(text1))
+                {
+                    float timeSinceLastRecognition = Time.time - lastRecognitionTime;
+                    bool isDifferentText = text1 != lastRecognizedText;
+                    bool isTimeIntervalSufficient = timeSinceLastRecognition > MIN_RECOGNITION_INTERVAL;
+                    bool isNotContained = lastRecognizedText.Length > 0 && !text1.Contains(lastRecognizedText);
+                    
+                    Debug.Log($"检查语音识别条件: 不同文本={isDifferentText}, 时间间隔足够={isTimeIntervalSufficient}, 不包含上次文本={isNotContained}, 间隔={timeSinceLastRecognition}秒");
+                    
+                    if (isDifferentText && (isTimeIntervalSufficient || isNotContained))
+                    {
+                        voiceRecognitionResult.IsComplete = false;
+                        voiceRecognitionResult.text = text1;
+                        lastRecognizedText = text1;
+                        lastRecognitionTime = Time.time;
+                        Debug.Log($"发送新识别语音: {text1}");
+                        SendCommand.Send(voiceRecognitionResult);
+                    }
+                    else
+                    {
+                        Debug.Log($"跳过重复或过快的语音识别: {text1}, 间隔: {timeSinceLastRecognition}秒");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"处理语音识别结果时出错: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
@@ -94,7 +170,7 @@ namespace LKZ.Voice
 
 
         /// <summary>
-        /// ������˷���ʱ��
+        /// ������˷���ʱ��
         /// </summary>
         WaitForSeconds samplingInterval = new WaitForSeconds(1 / 5f);
 
@@ -150,13 +226,13 @@ namespace LKZ.Voice
             }
             else
             {
-                Debug.Log("����Ȩ��˷�Ȩ�ޣ�");
+                Debug.Log("����Ȩ��˷�Ȩ�ޣ�");
             }
         }
 
 
         /// <summary>
-        /// ��һ�β���λ��
+        /// ��һ�β���λ��
         /// </summary>
         int lastSampling;
 

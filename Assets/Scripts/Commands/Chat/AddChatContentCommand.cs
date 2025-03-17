@@ -9,13 +9,16 @@ namespace LKZ.Chat.Commands
     public struct AddChatContentCommand
     {
         public InfoType infoType;
+        
+        /// <summary>
+        /// 标识是否是系统欢迎消息
+        /// </summary>
+        public bool isSystemWelcome;
 
         /// <summary>
         /// 添加文本的委托
         /// 这个参数是那个显示的数据添加数据用的
         /// </summary>
         public Action<Action<string>> _addTextAction;
-
-
     }
 }
